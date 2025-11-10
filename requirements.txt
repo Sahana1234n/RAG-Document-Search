@@ -11,3 +11,4 @@ wikipedia
 sentence-transformers
 langchain-huggingface
 langchain-groq
+huggingface-hub
