@@ -2,19 +2,30 @@ import streamlit as st
 from pathlib import Path
 import sys
 import time
-
-# Add src to path
-sys.path.append(str(Path(__file__).parent))
-
+import os
 from src.config.config import Config
 from src.document_ingestion.document_processor import DocumentProcessor
 from src.vectorstore.vectorstore import VectorStore
 from src.graph_builder.graph_builder import GraphBuilder
 
+# Load GROQ API key from Streamlit secrets
+try:
+    GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
+except KeyError:
+    st.error("🚨 GROQ_API_KEY not found in Streamlit secrets!")
+    GROQ_API_KEY = None
+
+# Pass the key to Config
+Config.GROQ_API_KEY = GROQ_API_KEY
+
+# Set a custom USER_AGENT for HTTP requests
+os.environ["USER_AGENT"] = "MyRAGApp/1.0"
+
+# Add src to path
+sys.path.append(str(Path(__file__).parent))
 
 
 # Streamlit Page Configuration
-
 st.set_page_config(
     page_title="RAG Document Search",
     layout="centered",
@@ -40,9 +51,7 @@ st.markdown("""
 
 
 # Session State Initialization
-
 def init_session_state():
-    """Initialize session state variables."""
     if 'rag_system' not in st.session_state:
         st.session_state.rag_system = None
     if 'initialized' not in st.session_state:
@@ -50,12 +59,15 @@ def init_session_state():
     if 'history' not in st.session_state:
         st.session_state.history = []
 
-# Cached RAG Initialization
 
+# Cached RAG Initialization
 @st.cache_resource
 def initialize_rag():
-    """Initialize the RAG system (cached for performance)."""
     try:
+        if not Config.GROQ_API_KEY:
+            st.error("Cannot initialize RAG system: API key missing.")
+            return None, 0
+
         # Initialize components
         llm = Config.get_llm()
         doc_processor = DocumentProcessor(
@@ -87,41 +99,35 @@ def initialize_rag():
 
 
 # Main App
-
 def main():
-    """Main application."""
     init_session_state()
 
-    # Title and description
+    # Title
     st.title("🔎 RAG Document Search")
-    st.markdown("Ask questions about the loaded documents below. \n 1. Attention is all you need \n 2. Langchain \n 3. RAG ")
-
-    # Initialize RAG system
-    if not st.session_state.initialized:
-        with st.spinner("🚀 Initializing the RAG system..."):
-            rag_system, num_chunks = initialize_rag()
-            if rag_system:
-                st.session_state.rag_system = rag_system
-                st.session_state.initialized = True
-                st.success(f"✅ System ready! ({num_chunks} document chunks loaded)")
-
-    st.markdown("---")
+    st.markdown("Ask questions about the loaded documents below. \n1. Attention is all you need\n2. Langchain\n3. RAG")
 
     # Search Form
     with st.form("search_form"):
-        question = st.text_input(
-            "Enter your question:",
-            placeholder=""
-        )
+        question = st.text_input("Enter your question:", placeholder="")
         submit = st.form_submit_button("🔍 Search")
 
-    # Process Search Query
     if submit and question:
+        # Initialize RAG system if not yet initialized
+        if not st.session_state.initialized:
+            if GROQ_API_KEY:
+                with st.spinner("🚀 Initializing the RAG system..."):
+                    rag_system, num_chunks = initialize_rag()
+                    if rag_system:
+                        st.session_state.rag_system = rag_system
+                        st.session_state.initialized = True
+                        st.success(f"✅ System ready! ({num_chunks} document chunks loaded)")
+            else:
+                st.error("🚨 GROQ_API_KEY missing. Cannot initialize RAG system.")
+
+        # Run query if RAG system is ready
         if st.session_state.rag_system:
             with st.spinner("Searching... please wait ⏳"):
                 start_time = time.time()
-
-                # Run the query through RAG system
                 result = st.session_state.rag_system.run(question)
                 elapsed_time = time.time() - start_time
 
@@ -132,11 +138,11 @@ def main():
                     'time': elapsed_time
                 })
 
-                # Display the answer
+                # Display answer
                 st.subheader("✅ Answer")
                 st.success(result.get('answer', 'No answer generated.'))
 
-                # Show retrieved docs in expander
+                # Show retrieved docs
                 with st.expander("📚 Source Documents"):
                     docs = result.get('retrieved_docs', [])
                     if docs:
@@ -157,7 +163,6 @@ def main():
     if st.session_state.history:
         st.markdown("---")
         st.subheader("🕒 Recent Searches")
-
         for item in reversed(st.session_state.history[-3:]):
             with st.container():
                 st.markdown(f"**Q:** {item['question']}")
@@ -165,8 +170,6 @@ def main():
                 st.caption(f"🕐 {item['time']:.2f}s")
                 st.markdown("")
 
-
-# Run the App
 
 if __name__ == "__main__":
     main()
