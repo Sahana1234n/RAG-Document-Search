@@ -7,7 +7,8 @@ This project demonstrates how retrieval and generation can be combined to create
 
 🌐 Deployment Link
 
-👉 Live Demo: https://your-username-rag-document-search.streamlit.app
+👉 [Live Demo](https://sahana1234n-rag-document-search-app-pxttna.streamlit.app/)
+
 
 ---
 
